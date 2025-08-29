@@ -6,7 +6,7 @@ SCRIPT_NAME=$(basename "$0")
 CONTAINER_ID=""
 CONTAINER_NAME="otterwiki"
 TEMPLATE="ubuntu-24.04-standard_24.04-2_amd64.tar.zst"
-STORAGE="$(pvesm status -content rootdir | awk 'NR>1 && $2=="active" {print $1; exit}' || echo 'local-lvm')"
+STORAGE="$(pvesm status -content rootdir | awk 'NR>1 && $3=="active" {print $1; exit}' || echo 'local-lvm')"
 MEMORY=2048
 CORES=2
 DISK_SIZE="20G"
@@ -76,11 +76,11 @@ check_storage() {
     if ! pvesm status -content rootdir | grep -q "$STORAGE"; then
         log "Storage '$STORAGE' not found or not suitable for containers"
         log "Available storage options:"
-        pvesm status -content rootdir | awk 'NR>1 && $2=="active" {print "  " $1}' || true
+        pvesm status -content rootdir | awk 'NR>1 && $3=="active" {print "  " $1}' || true
         
         # Try to auto-detect a suitable storage
         local auto_storage
-        auto_storage=$(pvesm status -content rootdir | awk 'NR>1 && $2=="active" {print $1; exit}')
+        auto_storage=$(pvesm status -content rootdir | awk 'NR>1 && $3=="active" {print $1; exit}')
         if [[ -n "$auto_storage" ]]; then
             log "Auto-selecting storage: $auto_storage"
             STORAGE="$auto_storage"
@@ -140,6 +140,7 @@ create_container() {
     fi
     
     log "Creating container $CONTAINER_ID..."
+    log "[DBG] Command: ${create_cmd[*]}"
     "${create_cmd[@]}" || error "Failed to create container"
 }
 
