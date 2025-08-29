@@ -9,13 +9,14 @@ TEMPLATE="ubuntu-24.04-standard_24.04-2_amd64.tar.zst"
 STORAGE="$(pvesm status -content rootdir | awk 'NR>1 && $3=="active" {print $1; exit}' || echo 'local-lvm')"
 MEMORY=2048
 CORES=2
-DISK_SIZE="20" # in GB
+DISK_SIZE="16" # in GB
 NETWORK="vmbr0"
-IP_ADDRESS=""
+IP_ADDRESS="dhcp"
 GATEWAY=""
-NAMESERVER="$(grep -m1 '^nameserver' /etc/resolv.conf | awk '{print $2}' 2>/dev/null || echo '8.8.8.8')"
+DNS=""
 SSH_KEY=""
 ROOT_PASSWORD=""
+VERBOSE="false"
 
 usage() {
     cat << EOF
@@ -23,10 +24,8 @@ Usage: $SCRIPT_NAME -i CONTAINER_ID [OPTIONS]
 
 Creates an LXC container in Proxmox for OtterWiki
 
-Required:
-  -i, --id CONTAINER_ID        Container ID (e.g., 100)
-
 Optional:
+  -i, --id CONTAINER_ID        Container ID (e.g., 100)
   -n, --name NAME              Container name (default: $CONTAINER_NAME)
   -t, --template TEMPLATE      CT template (default: $TEMPLATE)
   -s, --storage STORAGE        Storage location (default: auto-detect)
@@ -34,11 +33,12 @@ Optional:
   -c, --cores CORES            CPU cores (default: $CORES)
   -d, --disk DISK_SIZE         Disk size (default: $DISK_SIZE)
   -b, --bridge NETWORK         Network bridge (default: $NETWORK)
-  -a, --ip IP_ADDRESS          Static IP address (CIDR format, e.g., 192.168.1.100/24)
+  -a, --ip IP_ADDRESS          Static IP address (default: $IP_ADDRESS) CIDR format, e.g., 192.168.1.100/24
   -g, --gateway GATEWAY        Gateway IP address
-  -ns, --nameserver NS         DNS nameserver (default: host DNS)
+  -ns, --nameserver NS         DNS nameserver(s) (default: host DNS)
   -k, --ssh-key SSH_KEY        Path to SSH public key file
   -p, --password PASSWORD      Root password (will prompt if not provided)
+  -v, --verbose                Enable verbose output
   -h, --help                   Show this help message
 
 Example:
@@ -53,6 +53,12 @@ log() {
 error() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: $*" >&2
     exit 1
+}
+
+debug() {
+    if [[ "$VERBOSE" == "true" ]]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] DBG: $*"
+    fi
 }
 
 check_proxmox() {
@@ -110,21 +116,20 @@ create_container() {
         --memory "$MEMORY"
         --cores "$CORES"
         --rootfs "$STORAGE:$DISK_SIZE"
-        --net0 "name=eth0,bridge=$NETWORK,firewall=1"
-        --nameserver "$NAMESERVER"
         --features "nesting=1"
         --unprivileged 1
         --onboot 1
+        --net0
     )
     
-    if [[ -n "$IP_ADDRESS" ]]; then
-        if [[ -n "$GATEWAY" ]]; then
-            create_cmd[${#create_cmd[@]}]="--net0"
-            create_cmd[${#create_cmd[@]}]="name=eth0,bridge=$NETWORK,firewall=1,ip=$IP_ADDRESS,gw=$GATEWAY"
-        else
-            create_cmd[${#create_cmd[@]}]="--net0"
-            create_cmd[${#create_cmd[@]}]="name=eth0,bridge=$NETWORK,firewall=1,ip=$IP_ADDRESS"
-        fi
+    if [[ -n "$GATEWAY" ]]; then
+        create_cmd[${#create_cmd[@]}]="name=eth0,bridge=$NETWORK,firewall=1,ip=$IP_ADDRESS,gw=$GATEWAY"
+    else
+        create_cmd[${#create_cmd[@]}]="name=eth0,bridge=$NETWORK,firewall=1,ip=$IP_ADDRESS"
+    fi
+
+    if [[ -n "$DNS" ]]; then
+        create_cmd[${#create_cmd[@]}]="--nameserver "$DNS""
     fi
     
     if [[ -n "$SSH_KEY" ]]; then
@@ -140,7 +145,7 @@ create_container() {
     fi
     
     log "Creating container $CONTAINER_ID..."
-    log "[DBG] Command: ${create_cmd[*]}"
+    debug "Command: ${create_cmd[*]}"
     "${create_cmd[@]}" || error "Failed to create container"
 }
 
@@ -155,7 +160,7 @@ setup_container() {
     pct exec "$CONTAINER_ID" -- bash -c "apt-get update && apt-get upgrade -y" || error "Failed to update packages"
     
     log "Installing essential packages..."
-    pct exec "$CONTAINER_ID" -- bash -c "apt-get install -y curl wget git python3 python3-pip python3-venv nginx supervisor uwsgi uwsgi-plugin-python3 build-essential python3-dev libjpeg-dev zlib1g-dev libxml2-dev libxslt-dev" || error "Failed to install packages"
+    pct exec "$CONTAINER_ID" -- bash -c "apt-get install -y curl wget git netcat-traditional python3 python3-pip python3-venv nginx supervisor uwsgi uwsgi-plugin-python3 build-essential python3-dev libjpeg-dev zlib1g-dev libxml2-dev libxslt-dev" || error "Failed to install packages"
     
     log "Setting up Python virtual environment..."
     pct exec "$CONTAINER_ID" -- python3 -m venv /opt/otterwiki-venv
@@ -324,7 +329,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         -ns|--nameserver)
-            NAMESERVER="$2"
+            DNS="$2"
             shift 2
             ;;
         -k|--ssh-key)
@@ -334,6 +339,10 @@ while [[ $# -gt 0 ]]; do
         -p|--password)
             ROOT_PASSWORD="$2"
             shift 2
+            ;;
+        -v|--verbose)
+            VERBOSE="true"
+            shift
             ;;
         -h|--help)
             usage
@@ -346,7 +355,12 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -z "$CONTAINER_ID" ]]; then
-    error "Container ID is required. Use -i or --id option."
+    echo -n "Enter the container ID: "
+    read CONTAINER_ID
+fi
+
+if [[ -z "$CONTAINER_ID" ]]; then
+    error "Container ID is required!"
 fi
 
 if [[ -z "$ROOT_PASSWORD" && -z "$SSH_KEY" ]]; then
