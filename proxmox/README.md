@@ -24,7 +24,23 @@ The `setup-otterwiki-lxc.sh` script automates the creation and configuration of 
 
 ## Quick Start
 
-### Basic Usage
+### Execute Directly from GitHub
+
+Run the script directly from the repository without cloning:
+
+```bash
+# Basic usage with DHCP
+curl -fsSL https://raw.githubusercontent.com/redimp/otterwiki/main/proxmox/setup-otterwiki-lxc.sh | bash -s -- -i 100
+
+# With static IP and SSH key
+curl -fsSL https://raw.githubusercontent.com/redimp/otterwiki/main/proxmox/setup-otterwiki-lxc.sh | bash -s -- -i 100 -a 192.168.1.100/24 -g 192.168.1.1 -k ~/.ssh/id_rsa.pub
+```
+
+### Local Usage
+
+After cloning or downloading the script locally:
+
+#### Basic Usage
 
 Create a container with DHCP networking:
 
@@ -32,7 +48,7 @@ Create a container with DHCP networking:
 ./setup-otterwiki-lxc.sh -i 100
 ```
 
-### Advanced Usage
+#### Advanced Usage
 
 Create a container with static IP and SSH key authentication:
 
