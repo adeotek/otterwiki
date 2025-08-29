@@ -11,7 +11,7 @@ The `setup-otterwiki-lxc.sh` script automates the creation and configuration of 
 - **Ubuntu 24.04 LTS**: Uses the latest Ubuntu LTS template
 - **Automated Setup**: Complete installation and configuration of OtterWiki
 - **Flexible Configuration**: Customizable resources, networking, and authentication
-- **Production Ready**: Includes nginx, uWSGI, and supervisor for reliable service management
+- **Production Ready**: Includes uWSGI and supervisor for reliable service management
 - **Host DNS Integration**: Automatically uses host DNS settings as default
 
 ## Requirements
@@ -30,7 +30,7 @@ Run the script directly from the repository without cloning:
 
 ```bash
 # Basic usage with DHCP
-curl -fsSL https://raw.githubusercontent.com/redimp/otterwiki/main/proxmox/setup-otterwiki-lxc.sh | bash -s -- -i 100
+curl -fsSL https://raw.githubusercontent.com/redimp/otterwiki/main/proxmox/setup-otterwiki-lxc.sh | bash
 
 # With static IP and SSH key
 curl -fsSL https://raw.githubusercontent.com/redimp/otterwiki/main/proxmox/setup-otterwiki-lxc.sh | bash -s -- -i 100 -a 192.168.1.100/24 -g 192.168.1.1 -k ~/.ssh/id_rsa.pub
@@ -45,7 +45,7 @@ After cloning or downloading the script locally:
 Create a container with DHCP networking:
 
 ```bash
-./setup-otterwiki-lxc.sh -i 100
+./setup-otterwiki-lxc.sh
 ```
 
 #### Advanced Usage
@@ -53,7 +53,8 @@ Create a container with DHCP networking:
 Create a container with static IP and SSH key authentication:
 
 ```bash
-./setup-otterwiki-lxc.sh -i 100 \
+./setup-otterwiki-lxc.sh \
+  -i 100 \
   -n "otterwiki-prod" \
   -a 192.168.1.100/24 \
   -g 192.168.1.1 \
@@ -88,7 +89,7 @@ Create a container with static IP and SSH key authentication:
 3. **Container Creation**: Creates LXC container with specified configuration
 4. **System Setup**: Updates packages and installs dependencies
 5. **OtterWiki Installation**: Sets up Python environment and installs OtterWiki
-6. **Service Configuration**: Configures nginx, uWSGI, and supervisor
+6. **Service Configuration**: Configures uWSGI and supervisor
 7. **Data Setup**: Initializes git repository and configuration files
 
 ## Post-Installation
@@ -97,7 +98,7 @@ Create a container with static IP and SSH key authentication:
 
 After successful installation:
 
-- **Web Interface**: `http://[container-ip]` (port 80)
+- **Web Interface**: `http://[container-ip]:8080`
 - **Container Shell**: `pct enter [container-id]`
 - **First User**: The first registered user becomes the admin
 
@@ -131,7 +132,6 @@ supervisorctl status
 
 # View logs
 supervisorctl tail -f uwsgi
-supervisorctl tail -f nginx
 ```
 
 ## Configuration Files
@@ -140,7 +140,6 @@ Key configuration files in the container:
 
 - **OtterWiki Config**: `/app-data/settings.cfg`
 - **uWSGI Config**: `/app/uwsgi.ini`
-- **Nginx Config**: `/etc/nginx/sites-available/otterwiki`
 - **Supervisor Config**: `/etc/supervisor/conf.d/otterwiki.conf`
 
 ## Data Persistence

@@ -160,7 +160,7 @@ setup_container() {
     pct exec "$CONTAINER_ID" -- bash -c "apt-get update && apt-get upgrade -y" || error "Failed to update packages"
     
     log "Installing essential packages..."
-    pct exec "$CONTAINER_ID" -- bash -c "apt-get install -y curl wget git netcat-traditional python3 python3-pip python3-venv nginx supervisor uwsgi uwsgi-plugin-python3 build-essential python3-dev libjpeg-dev zlib1g-dev libxml2-dev libxslt-dev" || error "Failed to install packages"
+    pct exec "$CONTAINER_ID" -- bash -c "apt-get install -y curl wget git net-tools netcat-traditional python3 python3-pip python3-venv supervisor uwsgi uwsgi-plugin-python3 build-essential python3-dev libjpeg-dev zlib1g-dev libxml2-dev libxslt-dev" || error "Failed to install packages"
     
     log "Setting up Python virtual environment..."
     pct exec "$CONTAINER_ID" -- python3 -m venv /opt/otterwiki-venv
@@ -184,8 +184,7 @@ virtualenv = /opt/otterwiki-venv
 master = true
 processes = 2
 
-socket = /tmp/uwsgi.sock
-chmod-socket = 666
+http = 0.0.0.0:8080
 vacuum = true
 
 die-on-term = true
@@ -200,39 +199,8 @@ user=www-data
 autostart=true
 autorestart=true
 redirect_stderr=true
-
-[program:nginx]
-command=/usr/sbin/nginx -g "daemon off;"
-autostart=true
-autorestart=true
-redirect_stderr=true
 EOF
     
-    log "Creating Nginx configuration..."
-    pct exec "$CONTAINER_ID" -- tee /etc/nginx/sites-available/otterwiki > /dev/null << 'EOF'
-server {
-    listen 80 default_server;
-    server_name _;
-
-    client_max_body_size 50M;
-
-    location /static {
-        alias /opt/otterwiki-venv/lib/python3.12/site-packages/otterwiki/static;
-        expires 1y;
-        add_header Cache-Control "public, immutable";
-    }
-
-    location / {
-        include uwsgi_params;
-        uwsgi_pass unix:/tmp/uwsgi.sock;
-        uwsgi_param SCRIPT_NAME '';
-    }
-}
-EOF
-    
-    log "Enabling Nginx site..."
-    pct exec "$CONTAINER_ID" -- rm -f /etc/nginx/sites-enabled/default
-    pct exec "$CONTAINER_ID" -- ln -sf /etc/nginx/sites-available/otterwiki /etc/nginx/sites-enabled/
     
     log "Creating OtterWiki configuration..."
     pct exec "$CONTAINER_ID" -- tee /app-data/settings.cfg > /dev/null << 'EOF'
@@ -278,9 +246,9 @@ EOF
     log ""
     log "Access OtterWiki at:"
     if [[ -n "$IP_ADDRESS" ]]; then
-        log "  http://${IP_ADDRESS%/*}"
+        log "  http://${IP_ADDRESS%/*}:8080"
     else
-        log "  http://[container-ip]"
+        log "  http://[container-ip]:8080"
     fi
     log ""
     log "First registered user will become the admin."
