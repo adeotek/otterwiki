@@ -9,7 +9,7 @@ TEMPLATE="ubuntu-24.04-standard_24.04-2_amd64.tar.zst"
 STORAGE="$(pvesm status -content rootdir | awk 'NR>1 && $3=="active" {print $1; exit}' || echo 'local-lvm')"
 MEMORY=2048
 CORES=2
-DISK_SIZE="20G"
+DISK_SIZE="20" # in GB
 NETWORK="vmbr0"
 IP_ADDRESS=""
 GATEWAY=""
