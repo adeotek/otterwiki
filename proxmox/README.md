@@ -69,7 +69,7 @@ Create a container with static IP and SSH key authentication:
 | `-i, --id` | Container ID (required) | - |
 | `-n, --name` | Container hostname | otterwiki |
 | `-t, --template` | Ubuntu template | ubuntu-24.04-standard_24.04-2_amd64.tar.zst |
-| `-s, --storage` | Storage pool | local-lvm |
+| `-s, --storage` | Storage pool | auto-detect |
 | `-m, --memory` | Memory in MB | 2048 |
 | `-c, --cores` | CPU cores | 2 |
 | `-d, --disk` | Disk size | 20G |
@@ -172,10 +172,18 @@ Key configuration files in the container:
 
 ### Common Issues
 
-1. **Template Download Fails**: Check internet connectivity and Proxmox subscription
-2. **Container ID Exists**: Use a different ID or remove existing container
-3. **Network Issues**: Verify bridge configuration and IP ranges
-4. **SSH Key Not Found**: Ensure path to SSH key file is correct
+1. **Storage Error** (`no such logical volume`): 
+   - The script now auto-detects available storage
+   - To manually specify: `./setup-otterwiki-lxc.sh -i 100 -s local`
+   - Check available storage: `pvesm status -content rootdir`
+
+2. **Template Download Fails**: Check internet connectivity and Proxmox subscription
+
+3. **Container ID Exists**: Use a different ID or remove existing container
+
+4. **Network Issues**: Verify bridge configuration and IP ranges
+
+5. **SSH Key Not Found**: Ensure path to SSH key file is correct
 
 ### Log Locations
 

@@ -6,7 +6,7 @@ SCRIPT_NAME=$(basename "$0")
 CONTAINER_ID=""
 CONTAINER_NAME="otterwiki"
 TEMPLATE="ubuntu-24.04-standard_24.04-2_amd64.tar.zst"
-STORAGE="local-lvm"
+STORAGE="$(pvesm status -content rootdir | awk 'NR>1 && $2=="active" {print $1; exit}' || echo 'local-lvm')"
 MEMORY=2048
 CORES=2
 DISK_SIZE="20G"
@@ -29,7 +29,7 @@ Required:
 Optional:
   -n, --name NAME              Container name (default: $CONTAINER_NAME)
   -t, --template TEMPLATE      CT template (default: $TEMPLATE)
-  -s, --storage STORAGE        Storage location (default: $STORAGE)
+  -s, --storage STORAGE        Storage location (default: auto-detect)
   -m, --memory MEMORY          Memory in MB (default: $MEMORY)
   -c, --cores CORES            CPU cores (default: $CORES)
   -d, --disk DISK_SIZE         Disk size (default: $DISK_SIZE)
@@ -68,6 +68,28 @@ check_template() {
         pveam update
         pveam download local "$TEMPLATE" || error "Failed to download template $TEMPLATE"
     fi
+}
+
+check_storage() {
+    log "Checking storage availability..."
+    
+    if ! pvesm status -content rootdir | grep -q "$STORAGE"; then
+        log "Storage '$STORAGE' not found or not suitable for containers"
+        log "Available storage options:"
+        pvesm status -content rootdir | awk 'NR>1 && $2=="active" {print "  " $1}' || true
+        
+        # Try to auto-detect a suitable storage
+        local auto_storage
+        auto_storage=$(pvesm status -content rootdir | awk 'NR>1 && $2=="active" {print $1; exit}')
+        if [[ -n "$auto_storage" ]]; then
+            log "Auto-selecting storage: $auto_storage"
+            STORAGE="$auto_storage"
+        else
+            error "No suitable storage found for container rootfs"
+        fi
+    fi
+    
+    log "Using storage: $STORAGE"
 }
 
 validate_container_id() {
@@ -335,6 +357,7 @@ fi
 log "Starting LXC container creation process..."
 check_proxmox
 validate_container_id
+check_storage
 check_template
 create_container
 setup_container
