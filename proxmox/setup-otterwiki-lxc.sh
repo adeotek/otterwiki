@@ -162,81 +162,65 @@ setup_container() {
     pct exec "$CONTAINER_ID" -- bash -c "apt-get update && apt-get upgrade -y" || error "Failed to update packages"
     
     log "Installing essential packages..."
-    pct exec "$CONTAINER_ID" -- bash -c "apt-get install -y curl wget git net-tools netcat-traditional python3 python3-pip python3-venv supervisor uwsgi uwsgi-plugin-python3 build-essential python3-dev libjpeg-dev zlib1g-dev libxml2-dev libxslt-dev" || error "Failed to install packages"
+    pct exec "$CONTAINER_ID" -- bash -c "apt-get install -y curl wget git net-tools netcat-traditional python3 python3-pip python3-venv uwsgi uwsgi-plugin-python3 build-essential python3-dev libjpeg-dev zlib1g-dev libxml2-dev libxslt-dev" || error "Failed to install packages"
+    
+    log "Cloning OtterWiki repository..."
+    pct exec "$CONTAINER_ID" -- bash -c "cd /opt && git clone https://github.com/redimp/otterwiki.git" || error "Failed to clone OtterWiki repository"
     
     log "Setting up Python virtual environment..."
-    pct exec "$CONTAINER_ID" -- python3 -m venv /opt/otterwiki-venv
-    pct exec "$CONTAINER_ID" -- /opt/otterwiki-venv/bin/pip install --upgrade pip wheel
+    pct exec "$CONTAINER_ID" -- bash -c "cd /opt/otterwiki && python3 -m venv venv" || error "Failed to create virtual environment"
+    pct exec "$CONTAINER_ID" -- bash -c "cd /opt/otterwiki && ./venv/bin/pip install -U pip uwsgi" || error "Failed to upgrade pip and install uwsgi"
+    pct exec "$CONTAINER_ID" -- bash -c "cd /opt/otterwiki && ./venv/bin/pip install ." || error "Failed to install OtterWiki"
     
-    log "Installing OtterWiki..."
-    pct exec "$CONTAINER_ID" -- /opt/otterwiki-venv/bin/pip install otterwiki
+    log "Creating app-data directory structure..."
+    pct exec "$CONTAINER_ID" -- bash -c "cd /opt/otterwiki && mkdir -p app-data/repository" || error "Failed to create app-data directory"
     
-    log "Creating directories..."
-    pct exec "$CONTAINER_ID" -- mkdir -p /app-data /app/otterwiki
-    pct exec "$CONTAINER_ID" -- chown -R www-data:www-data /app-data
-    
-    log "Creating uWSGI configuration..."
-    pct exec "$CONTAINER_ID" -- tee /app/uwsgi.ini > /dev/null << 'EOF'
-[uwsgi]
-module = otterwiki.wsgi:application
-uid = www-data
-gid = www-data
-virtualenv = /opt/otterwiki-venv
-
-master = true
-processes = 2
-
-http = 0.0.0.0:8080
-vacuum = true
-
-die-on-term = true
-EOF
-    
-    log "Creating Supervisor configuration..."
-    pct exec "$CONTAINER_ID" -- tee /etc/supervisor/conf.d/otterwiki.conf > /dev/null << 'EOF'
-[program:uwsgi]
-command=/opt/otterwiki-venv/bin/uwsgi --ini /app/uwsgi.ini
-directory=/app
-user=www-data
-autostart=true
-autorestart=true
-redirect_stderr=true
-EOF
-    
+    log "Initializing data repository..."
+    pct exec "$CONTAINER_ID" -- bash -c "cd /opt/otterwiki/app-data/repository && git init -b main" || error "Failed to initialize repository"
     
     log "Creating OtterWiki configuration..."
-    pct exec "$CONTAINER_ID" -- tee /app-data/settings.cfg > /dev/null << 'EOF'
-SECRET_KEY = 'change-this-secret-key-in-production'
-REPOSITORY = '/app-data/repository'
-SQLALCHEMY_DATABASE_URI = 'sqlite:////app-data/db.sqlite'
+    pct exec "$CONTAINER_ID" -- bash -c "cd /opt/otterwiki && cat > settings.cfg << 'EOF'
+REPOSITORY = '/opt/otterwiki/app-data/repository'
+SQLALCHEMY_DATABASE_URI = 'sqlite:////opt/otterwiki/app-data/db.sqlite'
+SECRET_KEY = '$(python3 -c \"import secrets; print(secrets.token_hex())\")' 
 OTTERWIKI_NAME = 'OtterWiki'
 OTTERWIKI_MAIL_DEFAULT_SENDER = 'otterwiki@localhost'
 OTTERWIKI_WELCOME_PAGE = 'Home'
-EOF
-    
-    log "Setting up environment..."
-    pct exec "$CONTAINER_ID" -- tee /etc/environment > /dev/null << EOF
-OTTERWIKI_SETTINGS=/app-data/settings.cfg
-OTTERWIKI_REPOSITORY=/app-data/repository
-PATH="/opt/otterwiki-venv/bin:\$PATH"
-EOF
-    
-    log "Initializing OtterWiki repository..."
-    pct exec "$CONTAINER_ID" -- mkdir -p /app-data/repository
+EOF"
     
     if [[ -n "$GIT_REPO_URL" ]]; then
-        log "Cloning repository from $GIT_REPO_URL..."
-        pct exec "$CONTAINER_ID" -- bash -c "cd /app-data && rm -rf repository && git clone '$GIT_REPO_URL' repository" || error "Failed to clone repository"
-    else
-        log "Creating empty git repository..."
-        pct exec "$CONTAINER_ID" -- bash -c "cd /app-data/repository && git init --bare"
+        log "Cloning wiki content repository from $GIT_REPO_URL..."
+        pct exec "$CONTAINER_ID" -- bash -c "cd /opt/otterwiki/app-data && rm -rf repository && git clone '$GIT_REPO_URL' repository" || error "Failed to clone repository"
     fi
     
-    pct exec "$CONTAINER_ID" -- chown -R www-data:www-data /app-data
+    log "Setting ownership..."
+    pct exec "$CONTAINER_ID" -- chown -R www-data:www-data /opt/otterwiki
     
-    log "Starting services..."
-    pct exec "$CONTAINER_ID" -- systemctl enable supervisor
-    pct exec "$CONTAINER_ID" -- systemctl start supervisor
+    log "Creating systemd service for OtterWiki..."
+    pct exec "$CONTAINER_ID" -- tee /etc/systemd/system/otterwiki.service > /dev/null << 'EOF'
+[Unit]
+Description=uWSGI server for OtterWiki
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/otterwiki
+Environment=OTTERWIKI_SETTINGS=/opt/otterwiki/settings.cfg
+ExecStart=/opt/otterwiki/venv/bin/uwsgi --http 0.0.0.0:8080 --master --enable-threads --die-on-term -w otterwiki.server:app
+Restart=always
+RestartSec=10
+KillMode=mixed
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    
+    log "Enabling and starting OtterWiki service..."
+    pct exec "$CONTAINER_ID" -- systemctl daemon-reload
+    pct exec "$CONTAINER_ID" -- systemctl enable otterwiki.service
+    pct exec "$CONTAINER_ID" -- systemctl start otterwiki.service
     
     log "Container setup completed successfully!"
     log "Container ID: $CONTAINER_ID"
@@ -260,6 +244,11 @@ EOF
     else
         log "  http://[container-ip]:8080"
     fi
+    log ""
+    log "Service management:"
+    log "  systemctl status otterwiki"
+    log "  systemctl restart otterwiki"
+    log "  systemctl stop otterwiki"
     log ""
     log "First registered user will become the admin."
 }

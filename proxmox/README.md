@@ -9,9 +9,11 @@ The `setup-otterwiki-lxc.sh` script automates the creation and configuration of 
 ## Features
 
 - **Ubuntu 24.04 LTS**: Uses the latest Ubuntu LTS template
+- **Official Installation**: Follows [OtterWiki official installation guidelines](https://otterwiki.com/Installation#from-source-as-wsgi-application-with-uwsgi)
+- **Source Installation**: Clones from official GitHub repository for latest features
 - **Automated Setup**: Complete installation and configuration of OtterWiki
 - **Flexible Configuration**: Customizable resources, networking, and authentication
-- **Production Ready**: Includes uWSGI and supervisor for reliable service management
+- **Production Ready**: Includes uWSGI with systemd for reliable service management
 - **Host DNS Integration**: Automatically uses host DNS settings as default
 
 ## Requirements
@@ -90,8 +92,8 @@ Create a container with static IP and SSH key authentication:
 2. **Template Management**: Downloads Ubuntu 24.04 template if not present
 3. **Container Creation**: Creates LXC container with specified configuration
 4. **System Setup**: Updates packages and installs dependencies
-5. **OtterWiki Installation**: Sets up Python environment and installs OtterWiki
-6. **Service Configuration**: Configures uWSGI and supervisor
+5. **OtterWiki Installation**: Clones from source and sets up Python environment
+6. **Service Configuration**: Configures uWSGI with systemd service
 7. **Data Setup**: Initializes git repository and configuration files
 
 ## Post-Installation
@@ -126,29 +128,32 @@ pct destroy <container-id>
 ### Service Management (inside container)
 
 ```bash
-# Restart services
-systemctl restart supervisor
-
 # Check service status
-supervisorctl status
+systemctl status otterwiki
+
+# Restart service
+systemctl restart otterwiki
+
+# Stop service
+systemctl stop otterwiki
 
 # View logs
-supervisorctl tail -f uwsgi
+journalctl -u otterwiki -f
 ```
 
 ## Configuration Files
 
 Key configuration files in the container:
 
-- **OtterWiki Config**: `/app-data/settings.cfg`
-- **uWSGI Config**: `/app/uwsgi.ini`
-- **Supervisor Config**: `/etc/supervisor/conf.d/otterwiki.conf`
+- **OtterWiki Config**: `/opt/otterwiki/settings.cfg`
+- **Systemd Service**: `/etc/systemd/system/otterwiki.service`
+- **Virtual Environment**: `/opt/otterwiki/venv/`
 
 ## Data Persistence
 
-- **Wiki Data**: `/app-data/repository` (git repository)
-- **Database**: `/app-data/db.sqlite`
-- **Configuration**: `/app-data/settings.cfg`
+- **Wiki Data**: `/opt/otterwiki/app-data/repository` (git repository)
+- **Database**: `/opt/otterwiki/app-data/db.sqlite`
+- **Configuration**: `/opt/otterwiki/settings.cfg`
 
 ## Networking Examples
 
@@ -189,7 +194,7 @@ Key configuration files in the container:
 ### Log Locations
 
 - **Container Creation**: Script output shows detailed progress
-- **Service Logs**: Available via `supervisorctl tail` commands
+- **Service Logs**: Available via `journalctl -u otterwiki`
 - **System Logs**: `/var/log/` in container
 
 ### Getting Help
@@ -201,11 +206,89 @@ For issues with:
 
 ## Security Considerations
 
-- Change default secret key in `/app-data/settings.cfg`
+- Secret key is auto-generated during installation in `/opt/otterwiki/settings.cfg`
 - Configure proper firewall rules
 - Use SSH key authentication when possible
 - Regularly update container packages
 - Monitor container resource usage
+
+## Optional: Git Repository Synchronization
+
+If you've cloned an existing wiki repository using the `-r` option, you may want to set up automatic synchronization with the remote repository.
+
+### Setting Up Periodic Sync (Optional)
+
+To automatically sync changes with the remote repository, you can set up a cron job inside the container:
+
+1. **Enter the container**:
+   ```bash
+   pct enter <container-id>
+   ```
+
+2. **Switch to the www-data user**:
+   ```bash
+   sudo -u www-data -s
+   ```
+
+3. **Navigate to the repository**:
+   ```bash
+   cd /opt/otterwiki/app-data/repository
+   ```
+
+4. **Create a sync script**:
+   ```bash
+   cat > /opt/otterwiki/sync-repo.sh << 'EOF'
+   #!/bin/bash
+   cd /opt/otterwiki/app-data/repository
+   
+   # Pull latest changes from remote
+   git fetch origin
+   git merge origin/main 2>/dev/null || git merge origin/master 2>/dev/null
+   
+   # Push any local changes
+   git push origin 2>/dev/null || true
+   
+   echo "$(date): Repository sync completed" >> /var/log/otterwiki-sync.log
+   EOF
+   
+   chmod +x /opt/otterwiki/sync-repo.sh
+   chown www-data:www-data /opt/otterwiki/sync-repo.sh
+   ```
+
+5. **Set up the cron job** (as www-data user):
+   ```bash
+   crontab -e
+   ```
+   
+   Add this line to sync every 30 minutes:
+   ```
+   */30 * * * * /opt/otterwiki/sync-repo.sh
+   ```
+
+### Important Notes
+
+- **Backup First**: Always backup your data before setting up automatic sync
+- **Conflict Resolution**: The script handles simple merges but may fail on conflicts
+- **Authentication**: Ensure the container has appropriate git credentials configured
+- **Monitoring**: Check `/var/log/otterwiki-sync.log` for sync status
+- **Testing**: Test the sync script manually before enabling the cron job
+
+### Alternative: Manual Sync
+
+For manual synchronization, you can run these commands inside the container:
+
+```bash
+# Enter container and switch to www-data
+pct enter <container-id>
+sudo -u www-data -s
+cd /opt/otterwiki/app-data/repository
+
+# Pull changes
+git pull origin main  # or master
+
+# Push changes
+git push origin main  # or master
+```
 
 ## Customization
 
