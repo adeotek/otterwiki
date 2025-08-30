@@ -16,6 +16,7 @@ GATEWAY=""
 DNS=""
 SSH_KEY=""
 ROOT_PASSWORD=""
+GIT_REPO_URL=""
 VERBOSE="false"
 
 usage() {
@@ -38,6 +39,7 @@ Optional:
   -ns, --nameserver NS         DNS nameserver(s) (default: host DNS)
   -k, --ssh-key SSH_KEY        Path to SSH public key file
   -p, --password PASSWORD      Root password (will prompt if not provided)
+  -r, --repo-url URL           Git repository URL to clone (optional)
   -v, --verbose                Enable verbose output
   -h, --help                   Show this help message
 
@@ -221,7 +223,15 @@ EOF
     
     log "Initializing OtterWiki repository..."
     pct exec "$CONTAINER_ID" -- mkdir -p /app-data/repository
-    pct exec "$CONTAINER_ID" -- bash -c "cd /app-data/repository && git init --bare"
+    
+    if [[ -n "$GIT_REPO_URL" ]]; then
+        log "Cloning repository from $GIT_REPO_URL..."
+        pct exec "$CONTAINER_ID" -- bash -c "cd /app-data && rm -rf repository && git clone '$GIT_REPO_URL' repository" || error "Failed to clone repository"
+    else
+        log "Creating empty git repository..."
+        pct exec "$CONTAINER_ID" -- bash -c "cd /app-data/repository && git init --bare"
+    fi
+    
     pct exec "$CONTAINER_ID" -- chown -R www-data:www-data /app-data
     
     log "Starting services..."
@@ -306,6 +316,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         -p|--password)
             ROOT_PASSWORD="$2"
+            shift 2
+            ;;
+        -r|--repo-url)
+            GIT_REPO_URL="$2"
             shift 2
             ;;
         -v|--verbose)

@@ -59,6 +59,7 @@ Create a container with static IP and SSH key authentication:
   -a 192.168.1.100/24 \
   -g 192.168.1.1 \
   -k ~/.ssh/id_rsa.pub \
+  -r https://github.com/user/my-wiki.git \
   -m 4096 \
   -c 4
 ```
@@ -80,6 +81,7 @@ Create a container with static IP and SSH key authentication:
 | `-ns, --nameserver` | DNS server | Host DNS |
 | `-k, --ssh-key` | SSH public key file | - |
 | `-p, --password` | Root password | Interactive prompt |
+| `-r, --repo-url` | Git repository URL to clone | - |
 | `-h, --help` | Show help message | - |
 
 ## What the Script Does
@@ -106,19 +108,19 @@ After successful installation:
 
 ```bash
 # Start container
-pct start 100
+pct start <container-id>
 
 # Stop container
-pct stop 100
+pct stop <container-id>
 
 # Enter container
-pct enter 100
+pct enter <container-id>
 
 # View container status
-pct status 100
+pct status <container-id>
 
 # Delete container
-pct destroy 100
+pct destroy <container-id>
 ```
 
 ### Service Management (inside container)
