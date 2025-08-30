@@ -179,14 +179,17 @@ setup_container() {
     pct exec "$CONTAINER_ID" -- bash -c "cd /opt/otterwiki/app-data/repository && git init -b main" || error "Failed to initialize repository"
     
     log "Creating OtterWiki configuration..."
-    pct exec "$CONTAINER_ID" -- bash -c "cd /opt/otterwiki && cat > settings.cfg << 'EOF'
-REPOSITORY = '/opt/otterwiki/app-data/repository'
+    pct exec "$CONTAINER_ID" -- bash -c "cd /opt/otterwiki && python3 -c \"
+import secrets
+with open('settings.cfg', 'w') as f:
+    f.write('''REPOSITORY = '/opt/otterwiki/app-data/repository'
 SQLALCHEMY_DATABASE_URI = 'sqlite:////opt/otterwiki/app-data/db.sqlite'
-SECRET_KEY = '$(python3 -c \"import secrets; print(secrets.token_hex())\")' 
+SECRET_KEY = '{}' 
 OTTERWIKI_NAME = 'OtterWiki'
 OTTERWIKI_MAIL_DEFAULT_SENDER = 'otterwiki@localhost'
 OTTERWIKI_WELCOME_PAGE = 'Home'
-EOF"
+'''.format(secrets.token_hex()))
+\""
     
     if [[ -n "$GIT_REPO_URL" ]]; then
         log "Cloning wiki content repository from $GIT_REPO_URL..."
